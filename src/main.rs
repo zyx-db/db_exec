@@ -35,7 +35,8 @@ fn main() {
     let pets = BTreeMap::from([
         (1, Rc::new(make_row!(pets_schema, 2 as u32, "pet 1".to_string()).unwrap())),
         (2, Rc::new(make_row!(pets_schema, 2 as u32, "pet 2".to_string()).unwrap())),
-        (3, Rc::new(make_row!(pets_schema, 2 as u32, "pet 3".to_string()).unwrap()))
+        (3, Rc::new(make_row!(pets_schema, 2 as u32, "pet 3".to_string()).unwrap())),
+        (4, Rc::new(make_row!(pets_schema, 6 as u32, "pet 4".to_string()).unwrap()))
     ]);
     
     tables.insert("pets".to_string(), pets);
@@ -52,7 +53,7 @@ fn main() {
                 Scan::new(
                     &tables[&("users".to_string())]
                 ),
-                |row| row.get::<u32>(2).unwrap() < &1000
+                |row| row.get::<u32>(2).unwrap() < &10
             ),
             Scan::new(
                 &tables[&("pets".to_string())]
