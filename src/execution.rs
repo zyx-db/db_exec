@@ -1,4 +1,5 @@
 use std::{any::Any, collections::BTreeMap, fmt, marker::PhantomData};
+use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub enum Type {
@@ -111,14 +112,14 @@ pub struct Scan<'a, T>
 where
     T: Ord
 {
-    iterator: std::collections::btree_map::Iter<'a, T, Row>,
+    iterator: std::collections::btree_map::Iter<'a, T, Rc<Row>>,
 }
 
 impl<'a, T> Scan<'a, T> 
 where
     T: Ord
 {
-    pub fn new(map: &'a BTreeMap<T, Row>) -> Self {
+    pub fn new(map: &'a BTreeMap<T, Rc<Row>>) -> Self {
         Scan {
             iterator: map.iter(),
         }
@@ -129,42 +130,44 @@ impl<'a, T> Iterator for Scan<'a, T>
 where
     T: Ord
 {
-    type Item = &'a Row;
+    type Item = Rc<Row>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iterator.next().map(|(_, row)| row)
+        self.iterator.next().map(|(_, row)| {
+            Rc::clone(row)
+        })
     }
 }
 
-pub struct FilterIterator<'a, I, F>
+pub struct FilterIterator< I, F>
 where
-    I: Iterator<Item = &'a Row>,
-    F: FnMut(&Row) -> bool,
+    I: Iterator<Item = Rc<Row>>,
+    F: FnMut(&Rc<Row>) -> bool,
 {
     iter: I,
     predicate: F,
 }
 
-impl<'a, I, F> FilterIterator<'a, I, F>
+impl<I, F> FilterIterator<I, F>
 where
-    I: Iterator<Item = &'a Row>,
-    F: FnMut(&Row) -> bool,
+    I: Iterator<Item = Rc<Row>>,
+    F: FnMut(&Rc<Row>) -> bool,
 {
     pub fn new(iter: I, predicate: F) -> Self {
         FilterIterator { iter, predicate }
     }
 }
 
-impl<'a, I, F> Iterator for FilterIterator<'a, I, F>
+impl<I, F> Iterator for FilterIterator<I, F>
 where
-    I: Iterator<Item = &'a Row>,
-    F: FnMut(&Row) -> bool,
+    I: Iterator<Item = Rc<Row>>,
+    F: FnMut(&Rc<Row>) -> bool,
 {
-    type Item = &'a Row;
+    type Item = Rc<Row>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(row) = self.iter.next() {
-            if (self.predicate)(row) {
+            if (self.predicate)(&row) {
                 return Some(row);
             }
         }
@@ -179,14 +182,14 @@ pub struct JoinSchema {
 }
 
 impl JoinSchema {
-    pub fn generate_from_rows(&self, rows: Vec<&Row>) -> Row{
+    pub fn generate_from_rows(&self, rows: Vec<Rc<Row>>) -> Row{
         let mut data: Vec<Box<dyn Any>> = Vec::new();
         for i in 0..self.source_iter.len(){
             let source_idx = self.source_iter[i];
             let idx = self.iter_index[i];
             let t = &self.output_schema.data_types[i];
 
-            let r = rows[source_idx];
+            let r = rows[source_idx].clone();
 
             use Type::*;
             match t {
@@ -273,9 +276,9 @@ where
     }
 }
 
-pub struct NestedJoinIterator<'a, I, T>
+pub struct NestedJoinIterator<I, T>
 where
-    I: Iterator<Item = &'a Row>,
+    I: Iterator<Item = Rc<Row>>,
     T: Ord + Clone + 'static,
 {
     left: I,
@@ -283,13 +286,13 @@ where
     left_key_idx: usize,
     right_key_idx: usize,
     join_schema: JoinSchema,
-    outputs: Vec<Row>,
-    phantom: PhantomData<&'a T>,
+    outputs: Vec<Rc<Row>>,
+    phantom: PhantomData<T>
 }
 
-impl<'a, I, T> NestedJoinIterator<'a, I, T>
+impl<I, T> NestedJoinIterator<I, T>
 where
-    I: Iterator<Item = &'a Row>,
+    I: Iterator<Item = Rc<Row>>,
     T: Ord + Clone + 'static,
 {
     pub fn new(left: I, right: I, left_key_idx: usize, right_key_idx: usize, join_schema: JoinSchema) -> Self {
@@ -306,12 +309,12 @@ where
     }
 }
 
-impl<'a, I, T> Iterator for NestedJoinIterator<'a, I, T>
+impl<I, T> Iterator for NestedJoinIterator<I, T>
 where
-    I: Iterator<Item = &'a Row>,
-    T: Ord + Clone + 'a,
+    I: Iterator<Item = Rc<Row>>,
+    T: Ord + Clone,
 {
-    type Item = &'a Row;
+    type Item = Rc<Row>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(outer_row) = self.left.next() {
@@ -321,8 +324,8 @@ where
                 if key_left == key_right{
                     let x = vec![outer_row, inner_row];
                     let result = self.join_schema.generate_from_rows(x);
-                    self.outputs.push(result);
-                    //return Some(&outputs[outputs.len() - 1]);
+                    self.outputs.push(Rc::new(result));
+                    return Some(self.outputs[self.outputs.len() - 1].clone());
                 }
             }
         }
