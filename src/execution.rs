@@ -282,10 +282,9 @@ where
     }
 }
 
-pub struct NestedJoinIterator<I, J, T>
+pub struct NestedJoinIterator<I>
 where
     I: Iterator<Item = Rc<Row>>,
-    T: Ord + Clone + 'static,
 {
     left: I,
     right: Vec<Rc<Row>>,
@@ -295,21 +294,20 @@ where
     output_idx: usize,
     join_schema: JoinSchema,
     outputs: Vec<Rc<Row>>,
-    phantom: PhantomData<J>,
-    phantom_2: PhantomData<T>
 }
 
-impl<I, J, T> NestedJoinIterator<I, J, T>
+impl<I> NestedJoinIterator<I>
 where
     I: Iterator<Item = Rc<Row>>,
-    J: Iterator<Item = Rc<Row>>,
-    T: Ord + Clone + 'static,
 {
-    pub fn new(left: I, right: J, left_key_idx: usize, right_key_idx: usize, key_type: Type, join_schema: JoinSchema) -> Self {
+    pub fn new<J>(left: I, right: J, left_key_idx: usize, right_key_idx: usize, key_type: Type, join_schema: JoinSchema) -> Self 
+    where
+        J: Iterator<Item = Rc<Row>>,
+    {
         let outputs = Vec::new();
         let right = right.collect();
         let output_idx = 0;
-        NestedJoinIterator::<I, J, T> {
+        NestedJoinIterator::<I> {
             left,
             right,
             left_key_idx,
@@ -318,17 +316,13 @@ where
             output_idx,
             join_schema,
             outputs,
-            phantom: PhantomData,
-            phantom_2: PhantomData
         }
     }
 }
 
-impl<I, J, T> Iterator for NestedJoinIterator<I, J, T>
+impl<I> Iterator for NestedJoinIterator<I>
 where
     I: Iterator<Item = Rc<Row>>,
-    J: Iterator<Item = Rc<Row>>,
-    T: Ord + Clone + Debug,
 {
     type Item = Rc<Row>;
 

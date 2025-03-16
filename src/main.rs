@@ -46,7 +46,7 @@ fn main() {
     //  ON p.u_id = u.id
     // WHERE u.age < 10 
     let output_schema = RowSchema::new(vec![Type::Str, Type::Str]);
-    let query: execution::NestedJoinIterator<execution::FilterIterator<execution::Scan<'_, u32>, for<'a> fn(&'a Rc<execution::Row>) -> bool>, execution::Scan<'_, u32>, u32> = {
+    let query = {
         NestedJoinIterator::new(
             FilterIterator::new(
                 Scan::new(
