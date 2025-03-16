@@ -1,3 +1,4 @@
+#[macro_use]
 mod execution;
 
 use execution::*;
@@ -10,18 +11,16 @@ use std::any::Any;
 fn main() {
 
     let schema = RowSchema::new(
-            vec![1, 1, 1],
-            vec![0, 1, 2],
             vec![Type::U32, Type::Str, Type::U32]
         );
 
     let data = BTreeMap::from([
-        (1 as u32, Row::new(vec![Box::new(1 as u32), Box::new("Dhiraj".to_string()), Box::new(20 as u32)])),
-        (2 as u32, Row::new(vec![Box::new(2 as u32), Box::new("db".to_string()), Box::new(6 as u32)])),
-        (3 as u32, Row::new(vec![Box::new(3 as u32), Box::new("bomma".to_string()), Box::new(8 as u32)])),
-        (4 as u32, Row::new(vec![Box::new(4 as u32), Box::new("test".to_string()), Box::new(40 as u32)])),
-        (5 as u32, Row::new(vec![Box::new(5 as u32), Box::new("hello".to_string()), Box::new(10 as u32)])),
-        (6 as u32, Row::new(vec![Box::new(6 as u32), Box::new("??".to_string()), Box::new(220 as u32)])),
+        (1, make_row!(schema, 1 as u32, "Dhiraj".to_string(), 20 as u32).unwrap()),
+        (2, make_row!(schema, 2 as u32, "db".to_string(), 6 as u32).unwrap()),
+        (3, make_row!(schema, 3 as u32, "bomma".to_string(),8 as u32).unwrap()),
+        (4, make_row!(schema, 4 as u32, "test".to_string(),40 as u32).unwrap()),
+        (5, make_row!(schema, 5 as u32, "hello".to_string(),10 as u32).unwrap()),
+        (6, make_row!(schema, 6 as u32, "??".to_string(),220 as u32).unwrap()),
     ]);
 
 

@@ -13,10 +13,6 @@ pub struct Row {
 }
 
 impl Row {
-    pub fn new(data: Vec<Box<dyn Any>>) -> Self {
-        Row { data }
-    }
-
     pub fn get<T: 'static>(&self, index: usize) -> Option<&T> 
     {
         self.data.get(index).and_then(|v| v.downcast_ref::<T>())
@@ -33,47 +29,49 @@ impl Row {
 
 #[derive(Clone)]
 pub struct RowSchema {
-    source_iter: Vec<usize>,
-    iter_index: Vec<usize>,
     data_types: Vec<Type>
 }
 
 impl RowSchema {
-    pub fn new(source_iter: Vec<usize>, iter_index: Vec<usize>, data_types: Vec<Type>) -> Self {
-        RowSchema { source_iter, iter_index, data_types }
+    pub fn new(data_types: Vec<Type>) -> Self {
+        RowSchema { data_types }
     }
 
-    pub fn generate_from_rows(&self, rows: Vec<&Row>) -> Row{
-        let mut data: Vec<Box<dyn Any>> = Vec::new();
-        for i in 0..self.source_iter.len(){
-            let source_idx = self.source_iter[i];
-            let idx = self.iter_index[i];
-            let t = &self.data_types[i];
-
-            let r = rows[source_idx];
-
+    pub fn make_row(&self, values: Vec<Box<dyn Any>>) -> Result<Row, String> {
+        if values.len() != self.data_types.len() {
+            return Err(format!(
+                "expected {} values but got {}",
+                self.data_types.len(),
+                values.len()
+            ))
+        }
+        for (expected_t, v) in self.data_types.iter().zip(values.iter()) {
             use Type::*;
-            match t {
+            match expected_t {
                 U32 => {
-                    let x = r.get::<u32>(idx).unwrap().clone();
-                    data.push(Box::new(x));
+                    if v.downcast_ref::<u32>().is_none(){
+                        return Err("type mismatch, expected u32".to_string());
+                    }
                 }
                 I32 => {
-                    let x = r.get::<i32>(idx).unwrap().clone();
-                    data.push(Box::new(x));
-                }
-                Bool => {
-                    let x = r.get::<bool>(idx).unwrap().clone();
-                    data.push(Box::new(x));
+                    if v.downcast_ref::<i32>().is_none(){
+                        return Err("type mismatch, expected i32".to_string());
+                    }
                 }
                 Str => {
-                    let x = r.get::<String>(idx).unwrap().clone();
-                    data.push(Box::new(x));
+                    if v.downcast_ref::<String>().is_none(){
+                        return Err("type mismatch, expected String".to_string());
+                    }
+                }
+                Bool => {
+                    if v.downcast_ref::<bool>().is_none(){
+                        return Err("type mismatch, expected bool".to_string());
+                    }
                 }
             }
         }
 
-        return Row::new(data);
+        Ok(Row {data: values})
     }
 
     pub fn print(&self, r: &Row) -> String {
@@ -174,6 +172,47 @@ where
     }
 }
 
+pub struct JoinSchema {
+    source_iter: Vec<usize>,
+    iter_index: Vec<usize>,
+    output_schema: RowSchema
+}
+
+impl JoinSchema {
+    pub fn generate_from_rows(&self, rows: Vec<&Row>) -> Row{
+        let mut data: Vec<Box<dyn Any>> = Vec::new();
+        for i in 0..self.source_iter.len(){
+            let source_idx = self.source_iter[i];
+            let idx = self.iter_index[i];
+            let t = &self.output_schema.data_types[i];
+
+            let r = rows[source_idx];
+
+            use Type::*;
+            match t {
+                U32 => {
+                    let x = r.get::<u32>(idx).unwrap().clone();
+                    data.push(Box::new(x));
+                }
+                I32 => {
+                    let x = r.get::<i32>(idx).unwrap().clone();
+                    data.push(Box::new(x));
+                }
+                Bool => {
+                    let x = r.get::<bool>(idx).unwrap().clone();
+                    data.push(Box::new(x));
+                }
+                Str => {
+                    let x = r.get::<String>(idx).unwrap().clone();
+                    data.push(Box::new(x));
+                }
+            }
+        }
+
+        return Row { data };
+    }
+}
+
 pub struct HashJoinIterator<'a, I, T>
 where
     I: Iterator<Item = &'a Row>,
@@ -243,7 +282,7 @@ where
     right: I,
     left_key_idx: usize,
     right_key_idx: usize,
-    output_schema: RowSchema,
+    join_schema: JoinSchema,
     outputs: Vec<Row>,
     phantom: PhantomData<&'a T>,
 }
@@ -253,16 +292,16 @@ where
     I: Iterator<Item = &'a Row>,
     T: Ord + Clone + 'static,
 {
-    pub fn new(left: I, right: I, left_key_idx: usize, right_key_idx: usize, output_schema: RowSchema) -> Self {
+    pub fn new(left: I, right: I, left_key_idx: usize, right_key_idx: usize, join_schema: JoinSchema) -> Self {
         let outputs = Vec::new();
         NestedJoinIterator::<I, T> {
             left,
             right,
             left_key_idx,
             right_key_idx,
-            output_schema,
+            join_schema,
             outputs,
-            phantom: PhantomData,
+            phantom: PhantomData
         }
     }
 }
@@ -281,7 +320,7 @@ where
                 let key_right = inner_row.get::<T>(self.right_key_idx).unwrap();
                 if key_left == key_right{
                     let x = vec![outer_row, inner_row];
-                    let result = self.output_schema.generate_from_rows(x);
+                    let result = self.join_schema.generate_from_rows(x);
                     self.outputs.push(result);
                     //return Some(&outputs[outputs.len() - 1]);
                 }
@@ -290,4 +329,10 @@ where
 
         None
     }
+}
+
+macro_rules! make_row {
+    ($schema:expr, $($val:expr), *) => {
+        $schema.make_row(vec![$(Box::new($val) as Box<dyn Any>), *])
+    };
 }
