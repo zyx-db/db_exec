@@ -1,6 +1,6 @@
 use std::fmt::Debug;
-use std::{any::Any, collections::BTreeMap, marker::PhantomData};
 use std::rc::Rc;
+use std::{any::Any, collections::BTreeMap, marker::PhantomData};
 
 #[derive(Clone, Debug)]
 pub enum Type {
@@ -16,8 +16,7 @@ pub struct Row {
 }
 
 impl Row {
-    pub fn get<T: 'static>(&self, index: usize) -> Option<&T> 
-    {
+    pub fn get<T: 'static>(&self, index: usize) -> Option<&T> {
         self.data.get(index).and_then(|v| v.downcast_ref::<T>())
     }
 
@@ -32,7 +31,7 @@ impl Row {
 
 #[derive(Clone)]
 pub struct RowSchema {
-    data_types: Vec<Type>
+    data_types: Vec<Type>,
 }
 
 impl RowSchema {
@@ -46,49 +45,53 @@ impl RowSchema {
                 "expected {} values but got {}",
                 self.data_types.len(),
                 values.len()
-            ))
+            ));
         }
         for (expected_t, v) in self.data_types.iter().zip(values.iter()) {
             use Type::*;
             match expected_t {
                 U32 => {
-                    if v.downcast_ref::<u32>().is_none(){
+                    if v.downcast_ref::<u32>().is_none() {
                         return Err("type mismatch, expected u32".to_string());
                     }
                 }
                 I32 => {
-                    if v.downcast_ref::<i32>().is_none(){
+                    if v.downcast_ref::<i32>().is_none() {
                         return Err("type mismatch, expected i32".to_string());
                     }
                 }
                 Str => {
-                    if v.downcast_ref::<String>().is_none(){
+                    if v.downcast_ref::<String>().is_none() {
                         return Err("type mismatch, expected String".to_string());
                     }
                 }
                 Bool => {
-                    if v.downcast_ref::<bool>().is_none(){
+                    if v.downcast_ref::<bool>().is_none() {
                         return Err("type mismatch, expected bool".to_string());
                     }
                 }
             }
         }
 
-        Ok(Row {data: values})
+        Ok(Row { data: values })
     }
 
     pub fn print(&self, r: &Row) -> String {
         let row_len = r.len();
-        let output: String = r.iter()
+        let output: String = r
+            .iter()
             .enumerate()
             .map(|(i, v)| {
                 let t = &self.data_types[i];
                 let trailing = {
-                    if i < row_len - 1 {" - "}
-                    else {""}
+                    if i < row_len - 1 {
+                        " - "
+                    } else {
+                        ""
+                    }
                 };
                 use Type::*;
-                let value_str = match t{
+                let value_str = match t {
                     U32 => {
                         format!("{}", v.downcast_ref::<u32>().unwrap())
                     }
@@ -104,22 +107,22 @@ impl RowSchema {
                 };
                 format!("field {}: {} (type{:?}){}", i, value_str, t, trailing)
             })
-            .collect(); 
+            .collect();
 
         output
     }
 }
 
-pub struct Scan<'a, T> 
+pub struct Scan<'a, T>
 where
-    T: Ord
+    T: Ord,
 {
     iterator: std::collections::btree_map::Iter<'a, T, Rc<Row>>,
 }
 
-impl<'a, T> Scan<'a, T> 
+impl<'a, T> Scan<'a, T>
 where
-    T: Ord
+    T: Ord,
 {
     pub fn new(map: &'a BTreeMap<T, Rc<Row>>) -> Self {
         Scan {
@@ -128,20 +131,18 @@ where
     }
 }
 
-impl<'a, T> Iterator for Scan<'a, T> 
+impl<'a, T> Iterator for Scan<'a, T>
 where
-    T: Ord
+    T: Ord,
 {
     type Item = Rc<Row>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iterator.next().map(|(_, row)| {
-            Rc::clone(row)
-        })
+        self.iterator.next().map(|(_, row)| Rc::clone(row))
     }
 }
 
-pub struct FilterIterator< I, F>
+pub struct FilterIterator<I, F>
 where
     I: Iterator<Item = Rc<Row>>,
     F: FnMut(&Rc<Row>) -> bool,
@@ -180,17 +181,21 @@ where
 pub struct JoinSchema {
     source_iter: Vec<usize>,
     iter_index: Vec<usize>,
-    output_schema: RowSchema
+    output_schema: RowSchema,
 }
 
 impl JoinSchema {
     pub fn new(source_iter: Vec<usize>, iter_index: Vec<usize>, output_schema: RowSchema) -> Self {
-        JoinSchema { source_iter, iter_index, output_schema }
+        JoinSchema {
+            source_iter,
+            iter_index,
+            output_schema,
+        }
     }
 
-    pub fn generate_from_rows(&self, rows: Vec<Rc<Row>>) -> Row{
+    pub fn generate_from_rows(&self, rows: Vec<Rc<Row>>) -> Row {
         let mut data: Vec<Box<dyn Any>> = Vec::new();
-        for i in 0..self.source_iter.len(){
+        for i in 0..self.source_iter.len() {
             let source_idx = self.source_iter[i];
             let idx = self.iter_index[i];
             let t = &self.output_schema.data_types[i];
@@ -231,7 +236,7 @@ where
     right: I,
     left_key_idx: usize,
     right_key_idx: usize,
-    phantom: PhantomData<&'a T>
+    phantom: PhantomData<&'a T>,
 }
 
 impl<'a, I, T> HashJoinIterator<'a, I, T>
@@ -245,7 +250,7 @@ where
             right,
             left_key_idx,
             right_key_idx,
-            phantom: PhantomData
+            phantom: PhantomData,
         }
     }
 }
@@ -260,7 +265,7 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         //let left_map: BTreeMap<T, &'a Row> = BTreeMap::new();
         let l = self.left_key_idx;
-        let left_map: BTreeMap<T, &'a Row>= self
+        let left_map: BTreeMap<T, &'a Row> = self
             .left
             .by_ref()
             .map(|row| {
@@ -300,7 +305,14 @@ impl<I> NestedJoinIterator<I>
 where
     I: Iterator<Item = Rc<Row>>,
 {
-    pub fn new<J>(left: I, right: J, left_key_idx: usize, right_key_idx: usize, key_type: Type, join_schema: JoinSchema) -> Self 
+    pub fn new<J>(
+        left: I,
+        right: J,
+        left_key_idx: usize,
+        right_key_idx: usize,
+        key_type: Type,
+        join_schema: JoinSchema,
+    ) -> Self
     where
         J: Iterator<Item = Rc<Row>>,
     {
@@ -335,20 +347,20 @@ where
                     use Type::*;
                     match self.key_type {
                         U32 => {
-                            inner_row.get::<u32>(self.left_key_idx).unwrap() ==
-                                outer_row.get::<u32>(self.right_key_idx).unwrap()
+                            inner_row.get::<u32>(self.left_key_idx).unwrap()
+                                == outer_row.get::<u32>(self.right_key_idx).unwrap()
                         }
                         I32 => {
-                            inner_row.get::<i32>(self.left_key_idx).unwrap() ==
-                                outer_row.get::<i32>(self.right_key_idx).unwrap()
+                            inner_row.get::<i32>(self.left_key_idx).unwrap()
+                                == outer_row.get::<i32>(self.right_key_idx).unwrap()
                         }
                         Bool => {
-                            inner_row.get::<bool>(self.left_key_idx).unwrap() ==
-                                outer_row.get::<bool>(self.right_key_idx).unwrap()
+                            inner_row.get::<bool>(self.left_key_idx).unwrap()
+                                == outer_row.get::<bool>(self.right_key_idx).unwrap()
                         }
                         Str => {
-                            inner_row.get::<String>(self.left_key_idx).unwrap() ==
-                                outer_row.get::<String>(self.right_key_idx).unwrap()
+                            inner_row.get::<String>(self.left_key_idx).unwrap()
+                                == outer_row.get::<String>(self.right_key_idx).unwrap()
                         }
                     }
                 };
