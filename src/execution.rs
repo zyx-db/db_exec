@@ -1,4 +1,5 @@
-use std::{any::Any, collections::BTreeMap, fmt, marker::PhantomData};
+use std::fmt::Debug;
+use std::{any::Any, collections::BTreeMap, marker::PhantomData};
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
@@ -9,6 +10,7 @@ pub enum Type {
     Bool,
 }
 
+#[derive(Debug)]
 pub struct Row {
     data: Vec<Box<dyn Any>>,
 }
@@ -182,6 +184,10 @@ pub struct JoinSchema {
 }
 
 impl JoinSchema {
+    pub fn new(source_iter: Vec<usize>, iter_index: Vec<usize>, output_schema: RowSchema) -> Self {
+        JoinSchema { source_iter, iter_index, output_schema }
+    }
+
     pub fn generate_from_rows(&self, rows: Vec<Rc<Row>>) -> Row{
         let mut data: Vec<Box<dyn Any>> = Vec::new();
         for i in 0..self.source_iter.len(){
@@ -276,58 +282,94 @@ where
     }
 }
 
-pub struct NestedJoinIterator<I, T>
+pub struct NestedJoinIterator<I, J, T>
 where
     I: Iterator<Item = Rc<Row>>,
     T: Ord + Clone + 'static,
 {
     left: I,
-    right: I,
+    right: Vec<Rc<Row>>,
     left_key_idx: usize,
     right_key_idx: usize,
+    key_type: Type,
+    output_idx: usize,
     join_schema: JoinSchema,
     outputs: Vec<Rc<Row>>,
-    phantom: PhantomData<T>
+    phantom: PhantomData<J>,
+    phantom_2: PhantomData<T>
 }
 
-impl<I, T> NestedJoinIterator<I, T>
+impl<I, J, T> NestedJoinIterator<I, J, T>
 where
     I: Iterator<Item = Rc<Row>>,
+    J: Iterator<Item = Rc<Row>>,
     T: Ord + Clone + 'static,
 {
-    pub fn new(left: I, right: I, left_key_idx: usize, right_key_idx: usize, join_schema: JoinSchema) -> Self {
+    pub fn new(left: I, right: J, left_key_idx: usize, right_key_idx: usize, key_type: Type, join_schema: JoinSchema) -> Self {
         let outputs = Vec::new();
-        NestedJoinIterator::<I, T> {
+        let right = right.collect();
+        let output_idx = 0;
+        NestedJoinIterator::<I, J, T> {
             left,
             right,
             left_key_idx,
             right_key_idx,
+            key_type,
+            output_idx,
             join_schema,
             outputs,
-            phantom: PhantomData
+            phantom: PhantomData,
+            phantom_2: PhantomData
         }
     }
 }
 
-impl<I, T> Iterator for NestedJoinIterator<I, T>
+impl<I, J, T> Iterator for NestedJoinIterator<I, J, T>
 where
     I: Iterator<Item = Rc<Row>>,
-    T: Ord + Clone,
+    J: Iterator<Item = Rc<Row>>,
+    T: Ord + Clone + Debug,
 {
     type Item = Rc<Row>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(outer_row) = self.left.next() {
-            while let Some(inner_row) = self.right.next() {
-                let key_left = outer_row.get::<T>(self.left_key_idx).unwrap();
-                let key_right = inner_row.get::<T>(self.right_key_idx).unwrap();
-                if key_left == key_right{
-                    let x = vec![outer_row, inner_row];
+            //println!("outer row: {:?}", outer_row);
+            for inner_row in &self.right {
+                //println!("inner row: {:?}", inner_row);
+                let valid = {
+                    use Type::*;
+                    match self.key_type {
+                        U32 => {
+                            inner_row.get::<u32>(self.left_key_idx).unwrap() ==
+                                outer_row.get::<u32>(self.right_key_idx).unwrap()
+                        }
+                        I32 => {
+                            inner_row.get::<i32>(self.left_key_idx).unwrap() ==
+                                outer_row.get::<i32>(self.right_key_idx).unwrap()
+                        }
+                        Bool => {
+                            inner_row.get::<bool>(self.left_key_idx).unwrap() ==
+                                outer_row.get::<bool>(self.right_key_idx).unwrap()
+                        }
+                        Str => {
+                            inner_row.get::<String>(self.left_key_idx).unwrap() ==
+                                outer_row.get::<String>(self.right_key_idx).unwrap()
+                        }
+                    }
+                };
+                if valid {
+                    let x = vec![Rc::clone(&outer_row), Rc::clone(inner_row)];
                     let result = self.join_schema.generate_from_rows(x);
                     self.outputs.push(Rc::new(result));
-                    return Some(self.outputs[self.outputs.len() - 1].clone());
+                    //return Some(self.outputs[self.outputs.len() - 1].clone());
                 }
             }
+        }
+
+        if self.output_idx < self.outputs.len() {
+            self.output_idx += 1;
+            return Some(self.outputs[self.output_idx - 1].clone());
         }
 
         None
