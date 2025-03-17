@@ -18,6 +18,7 @@ WHERE u.age < 10
 maps to this code, where i manually define what iterators i need, as well as how they should process the rows they get from their children
 
 ```rust
+// set up tables and add records here...
 let output_schema = RowSchema::new(vec![Type::Str, Type::Str]);
 let query = {
     NestedJoinIterator::new(
